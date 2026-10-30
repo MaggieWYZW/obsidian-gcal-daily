@@ -26,9 +26,9 @@ A bullet list (default) or a table, merged from as many calendars as you configu
 
 ## Requirements
 
-- **Obsidian desktop.** The plugin runs the `gcloud` command-line tool, so it doesn't work on mobile.
+- **Obsidian desktop.** The plugin reads a credentials file from your computer, so it doesn't work on mobile.
 - **A Google account** with the calendars you want to read.
-- **The [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)** (`gcloud`), installed and signed in. See Setup.
+- **The [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)** (`gcloud`). It's only used once, to sign in (see Setup). The plugin never runs it.
 - **A Google Cloud project with the Google Calendar API enabled.** API calls count against this project's quota. Reading your calendar this way costs nothing.
 
 ## Setup
@@ -39,10 +39,8 @@ A bullet list (default) or a table, merged from as many calendars as you configu
    gcloud auth application-default login \
      --scopes=https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/cloud-platform
    ```
-3. **Open the plugin's settings in Obsidian** and set:
-   - **Quota project:** the ID of the project from step 1.
-   - **gcloud path:** if Obsidian can't find `gcloud`, enter its full path. To find the path, run `which gcloud` on macOS or Linux, or `where gcloud` on Windows.
-   - **Calendars:** add one calendar per line (see Settings).
+3. **Set the quota project** to the project from step 1. Either run `gcloud auth application-default set-quota-project <project-id>`, or enter the project ID in the plugin's **Quota project** setting.
+4. **Add your calendars** in the plugin's settings, one per line (see Settings).
 
 ## Usage
 
@@ -63,8 +61,8 @@ If a fetch fails, the plugin inserts a warning callout instead of the schedule. 
 | Setting | Description | Default |
 |---|---|---|
 | Format | Bullet list or table. | Bullet list |
-| gcloud path | The `gcloud` executable used to get access tokens. | `gcloud` |
-| Quota project | The Google Cloud project with the Calendar API enabled. | (empty) |
+| Credentials file | The file saved by `gcloud auth application-default login`. | gcloud's default location: `~/.config/gcloud/application_default_credentials.json`, or `%APPDATA%\gcloud\…` on Windows |
+| Quota project | The Google Cloud project with the Calendar API enabled. | The quota project saved with your credentials |
 | Time zone | An IANA time zone name, e.g. `Europe/London`. Sets which hours count as "the day". | Your system time zone |
 | Calendars | One calendar per line, as `calendar id, marker, label`. The marker and label are optional. | `primary` |
 
@@ -82,11 +80,14 @@ If a fetch fails, the plugin inserts a warning callout instead of the schedule. 
 
 This plugin:
 
-- **Connects to the Google Calendar API** (`https://www.googleapis.com/calendar/v3`) to read the events for the requested day from the calendars you list. It doesn't use any other remote service.
-- **Accesses files outside your vault, through `gcloud`.** It runs `gcloud auth application-default print-access-token` to get a short-lived access token. `gcloud` reads your Application Default Credentials, which are stored outside the vault (e.g. in `~/.config/gcloud`). The plugin never reads, stores or sends those credentials itself.
+- **Connects to two Google services, and nothing else:**
+  - Google's sign-in endpoint (`https://oauth2.googleapis.com/token`), to swap your saved credentials for a short-lived access token.
+  - The Google Calendar API (`https://www.googleapis.com/calendar/v3`), to read the events for the requested day from the calendars you list.
+- **Reads one file outside your vault:** the Application Default Credentials file that `gcloud auth application-default login` saves (see the Credentials file setting). It reads the refresh token and client ID from that file and sends them only to Google's sign-in endpoint, to get access tokens. The plugin never writes to the file, copies it, or sends it anywhere else.
 - **Requires a Google account and a Google Cloud project,** as described in Requirements.
 - **Is read-only.** It requests events only and never changes your calendars.
-- **Collects no telemetry and stores no tokens.** A new token is requested on every fetch. Your settings are saved in the plugin's `data.json` inside your vault.
+- **Doesn't run commands or programs on your computer.**
+- **Collects no telemetry and stores no tokens.** The access token is kept in memory only, until it expires (about an hour). Your settings are saved in the plugin's `data.json` inside your vault.
 
 ## Known limitations
 

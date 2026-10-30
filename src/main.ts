@@ -1,8 +1,8 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, requestUrl } from "obsidian";
-import { DEFAULT_SETTINGS, GcalSettings, HttpGet, dateFromTitle, scheduleMarkdown } from "./calendar";
+import { DEFAULT_SETTINGS, GcalSettings, Http, dateFromTitle, defaultCredentialsPath, scheduleMarkdown } from "./calendar";
 
-const obsidianHttp: HttpGet = async (url, headers) => {
-  const res = await requestUrl({ url, headers, throw: false });
+const obsidianHttp: Http = async ({ url, method, headers, body }) => {
+  const res = await requestUrl({ url, method, headers, body, throw: false });
   return { status: res.status, json: res.json };
 };
 
@@ -58,9 +58,10 @@ class GcalSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Format").setDesc("How the schedule is written into the note.")
       .addDropdown((d) => d.addOption("list", "Bullet list").addOption("table", "Table").setValue(s.format)
         .onChange(async (v) => { s.format = v as GcalSettings["format"]; await save(); }));
-    new Setting(containerEl).setName("gcloud path").setDesc("Used to mint access tokens (Application Default Credentials).")
-      .addText((t) => t.setValue(s.gcloudPath).onChange(async (v) => { s.gcloudPath = v.trim(); await save(); }));
-    new Setting(containerEl).setName("Quota project").setDesc("GCP project with the Calendar API enabled; calls are billed here.")
+    new Setting(containerEl).setName("Credentials file").setDesc("Saved by `gcloud auth application-default login`. Leave blank for the default location.")
+      .addText((t) => t.setPlaceholder(defaultCredentialsPath()).setValue(s.credentialsPath)
+        .onChange(async (v) => { s.credentialsPath = v.trim(); await save(); }));
+    new Setting(containerEl).setName("Quota project").setDesc("GCP project with the Calendar API enabled; calls count against its quota. Leave blank to use the one saved with your credentials.")
       .addText((t) => t.setValue(s.quotaProject).onChange(async (v) => { s.quotaProject = v.trim(); await save(); }));
     new Setting(containerEl).setName("Time zone").setDesc("IANA name, e.g. Europe/London.")
       .addText((t) => t.setValue(s.timeZone).onChange(async (v) => { s.timeZone = v.trim(); await save(); }));

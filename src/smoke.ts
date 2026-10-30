@@ -1,10 +1,10 @@
 // Terminal check of the calendar logic: `npm run smoke -- 2026-10-30`
 // Uses the plugin's saved settings (data.json) when present, else the defaults.
 import { existsSync, readFileSync } from "fs";
-import { DEFAULT_SETTINGS, HttpGet, dateFromTitle, scheduleMarkdown } from "./calendar";
+import { DEFAULT_SETTINGS, Http, dateFromTitle, scheduleMarkdown } from "./calendar";
 
-const nodeHttp: HttpGet = async (url, headers) => {
-  const res = await fetch(url, { headers });
+const nodeHttp: Http = async ({ url, method, headers, body }) => {
+  const res = await fetch(url, { method, headers, body });
   return { status: res.status, json: await res.json() };
 };
 
