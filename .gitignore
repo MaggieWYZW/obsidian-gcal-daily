@@ -1,0 +1,9 @@
+# Dependencies and build output (main.js ships as a release asset, not in git)
+node_modules/
+main.js
+smoke.cjs
+
+# Personal plugin settings: calendar IDs, quota project. Never commit.
+data.json
+
+.DS_Store

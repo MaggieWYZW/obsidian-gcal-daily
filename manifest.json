@@ -1,0 +1,9 @@
+{
+  "id": "gcal-daily",
+  "name": "GCal Daily",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Insert a day's Google Calendar schedule (via gcloud credentials) into notes, e.g. from a Templater daily-note template.",
+  "author": "Maggie Wang",
+  "isDesktopOnly": true
+}
