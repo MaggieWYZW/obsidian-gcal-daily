@@ -26,7 +26,7 @@ A bullet list (default) or a table, merged from as many calendars as you configu
 
 ## Requirements
 
-- **Obsidian desktop.** The plugin reads a credentials file from your computer, so it doesn't work on mobile.
+- **Obsidian desktop, version 1.13 or later.** The plugin reads a credentials file from your computer, so it doesn't work on mobile.
 - **A Google account** with the calendars you want to read.
 - **The [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)** (`gcloud`). It's only used once, to sign in (see Setup). The plugin never runs it.
 - **A Google Cloud project with the Google Calendar API enabled.** API calls count against this project's quota. Reading your calendar this way costs nothing.

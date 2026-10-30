@@ -1,16 +1,16 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, requestUrl } from "obsidian";
-import { DEFAULT_SETTINGS, GcalSettings, Http, dateFromTitle, defaultCredentialsPath, scheduleMarkdown } from "./calendar";
+import { App, Notice, Plugin, PluginSettingTab, SettingDefinitionItem, requestUrl } from "obsidian";
+import { CalendarSource, DEFAULT_SETTINGS, GcalSettings, Http, dateFromTitle, defaultCredentialsPath, scheduleMarkdown } from "./calendar";
 
 const obsidianHttp: Http = async ({ url, method, headers, body }) => {
   const res = await requestUrl({ url, method, headers, body, throw: false });
-  return { status: res.status, json: res.json };
+  return { status: res.status, json: res.json as unknown };
 };
 
 export default class GcalDailyPlugin extends Plugin {
   settings!: GcalSettings;
 
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<GcalSettings> | null);
     this.addSettingTab(new GcalSettingTab(this.app, this));
 
     // Retry / backfill: insert the schedule for the active note's date at the cursor.
@@ -44,39 +44,71 @@ export default class GcalDailyPlugin extends Plugin {
   }
 }
 
+// Calendars are stored as a list but edited as lines of `id, marker, label`.
+function formatCalendars(calendars: CalendarSource[]): string {
+  return calendars.map((c) => [c.id, c.marker.trim(), c.label ?? ""].join(", ").replace(/(, )+$/, "")).join("\n");
+}
+
+function parseCalendars(text: string): CalendarSource[] {
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [id, marker = "", label = ""] = l.split(",").map((x) => x.trim());
+    return { id, marker: marker ? `${marker} ` : "", label };
+  });
+}
+
+// Declarative settings (Obsidian 1.13+): Obsidian renders these, indexes them for
+// settings search, and reads/writes plugin.settings[key] for each control.
 class GcalSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: GcalDailyPlugin) {
     super(app, plugin);
   }
 
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    const s = this.plugin.settings;
-    const save = () => this.plugin.saveSettings();
-
-    new Setting(containerEl).setName("Format").setDesc("How the schedule is written into the note.")
-      .addDropdown((d) => d.addOption("list", "Bullet list").addOption("table", "Table").setValue(s.format)
-        .onChange(async (v) => { s.format = v as GcalSettings["format"]; await save(); }));
-    new Setting(containerEl).setName("Credentials file").setDesc("Saved by `gcloud auth application-default login`. Leave blank for the default location.")
-      .addText((t) => t.setPlaceholder(defaultCredentialsPath()).setValue(s.credentialsPath)
-        .onChange(async (v) => { s.credentialsPath = v.trim(); await save(); }));
-    new Setting(containerEl).setName("Quota project").setDesc("GCP project with the Calendar API enabled; calls count against its quota. Leave blank to use the one saved with your credentials.")
-      .addText((t) => t.setValue(s.quotaProject).onChange(async (v) => { s.quotaProject = v.trim(); await save(); }));
-    new Setting(containerEl).setName("Time zone").setDesc("IANA name, e.g. Europe/London.")
-      .addText((t) => t.setValue(s.timeZone).onChange(async (v) => { s.timeZone = v.trim(); await save(); }));
-    new Setting(containerEl).setName("Calendars").setDesc("One per line: calendar id, then optional title marker and legend label, comma-separated (e.g. `me@gmail.com, 🏠, personal`). Use `primary` for your main calendar. Earlier lines win when an event is on several calendars.")
-      .addTextArea((t) => {
-        t.inputEl.rows = 5;
-        t.inputEl.addClass("gcal-daily-calendars");
-        t.setValue(s.calendars.map((c) => [c.id, c.marker.trim(), c.label ?? ""].join(", ").replace(/(, )+$/, "")).join("\n"))
-          .onChange(async (v) => {
-            s.calendars = v.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-              const [id, marker = "", label = ""] = l.split(",").map((x) => x.trim());
-              return { id, marker: marker ? `${marker} ` : "", label };
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Format",
+        desc: "How the schedule is written into the note.",
+        control: { type: "dropdown", key: "format", options: { list: "Bullet list", table: "Table" } },
+      },
+      {
+        name: "Credentials file",
+        desc: "Saved by `gcloud auth application-default login`. Leave blank for the default location.",
+        control: { type: "text", key: "credentialsPath", placeholder: defaultCredentialsPath() },
+      },
+      {
+        name: "Quota project",
+        desc: "GCP project with the Calendar API enabled; calls count against its quota. Leave blank to use the one saved with your credentials.",
+        control: { type: "text", key: "quotaProject" },
+      },
+      {
+        name: "Time zone",
+        desc: "IANA name, e.g. Europe/London.",
+        control: { type: "text", key: "timeZone", placeholder: DEFAULT_SETTINGS.timeZone, validate: validateTimeZone },
+      },
+      {
+        name: "Calendars",
+        desc: "One per line: calendar id, then optional title marker and legend label, comma-separated (e.g. `me@gmail.com, 🏠, personal`). Use `primary` for your main calendar. Earlier lines win when an event is on several calendars.",
+        // Rendered by hand: the textarea text is parsed into the calendars list, so it can't bind to a key directly.
+        render: (setting) => {
+          setting.addTextArea((t) => {
+            t.inputEl.rows = 5;
+            t.inputEl.addClass("gcal-daily-calendars");
+            t.setValue(formatCalendars(this.plugin.settings.calendars)).onChange(async (v) => {
+              this.plugin.settings.calendars = parseCalendars(v);
+              await this.plugin.saveSettings();
             });
-            await save();
           });
-      });
+        },
+      },
+    ];
+  }
+}
+
+function validateTimeZone(value: string): string | void {
+  if (!value.trim()) return;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: value.trim() });
+  } catch {
+    return "Not a time zone name. Use an IANA name, e.g. Europe/London.";
   }
 }

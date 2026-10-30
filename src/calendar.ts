@@ -28,14 +28,49 @@ export const DEFAULT_SETTINGS: GcalSettings = {
   calendars: [{ id: "primary", marker: "" }],
 };
 
-// Minimal HTTP shape so Obsidian's requestUrl and Node's fetch can both be plugged in.
+// Minimal HTTP shape so Obsidian's requestUrl and Node's https (smoke test) can both be plugged in.
 export interface HttpRequest {
   url: string;
   method?: "GET" | "POST";
   headers?: Record<string, string>;
   body?: string;
 }
-export type Http = (req: HttpRequest) => Promise<{ status: number; json: any }>;
+export type Http = (req: HttpRequest) => Promise<{ status: number; json: unknown }>;
+
+// The fields read from gcloud's credentials file and Google's responses.
+interface Credentials {
+  type?: string;
+  client_id?: string;
+  client_secret?: string;
+  refresh_token?: string;
+  quota_project_id?: string;
+}
+interface TokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+interface EventTime {
+  date?: string; // all-day events
+  dateTime?: string; // timed events
+}
+interface CalEvent {
+  id: string;
+  iCalUID?: string;
+  status?: string;
+  summary?: string;
+  location?: string;
+  hangoutLink?: string;
+  start: EventTime;
+  end: EventTime;
+  attendees?: { self?: boolean; responseStatus?: string }[];
+}
+interface EventsResponse {
+  items?: CalEvent[];
+  nextPageToken?: string;
+  error?: { message?: string };
+}
 
 const RSVP: Record<string, string> = { accepted: "✅", tentative: "❓", needsAction: "⚠️", declined: "❌" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -63,12 +98,12 @@ let cached: { file: string; expires: number; auth: Auth } | undefined;
  * access token. The credentials are only read from disk and sent to Google's token endpoint.
  */
 export async function authenticate(credentialsPath: string, http: Http): Promise<Auth> {
-  const file = credentialsPath || defaultCredentialsPath();
+  const file = credentialsPath.trim() || defaultCredentialsPath();
   if (cached && cached.file === file && Date.now() < cached.expires) return cached.auth;
 
-  let creds: any;
+  let creds: Credentials;
   try {
-    creds = JSON.parse(await readFile(file, "utf8"));
+    creds = JSON.parse(await readFile(file, "utf8")) as Credentials;
   } catch {
     throw new Error(`Couldn't read credentials at ${file}. Sign in with: ${FIX_AUTH}`);
   }
@@ -82,18 +117,19 @@ export async function authenticate(credentialsPath: string, http: Http): Promise
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: creds.client_id,
-      client_secret: creds.client_secret,
+      client_id: creds.client_id ?? "",
+      client_secret: creds.client_secret ?? "",
       refresh_token: creds.refresh_token,
     }).toString(),
   });
-  if (res.status !== 200 || !res.json?.access_token) {
-    const msg = res.json?.error_description ?? res.json?.error ?? `HTTP ${res.status}`;
+  const body = (res.json ?? {}) as TokenResponse;
+  if (res.status !== 200 || !body.access_token) {
+    const msg = body.error_description ?? body.error ?? `HTTP ${res.status}`;
     throw new Error(`Google sign-in failed: ${msg}. Re-auth with: ${FIX_AUTH}`);
   }
 
-  const auth = { token: res.json.access_token, quotaProject: creds.quota_project_id ?? "" };
-  cached = { file, auth, expires: Date.now() + ((res.json.expires_in ?? 3600) - 60) * 1000 };
+  const auth = { token: body.access_token, quotaProject: creds.quota_project_id ?? "" };
+  cached = { file, auth, expires: Date.now() + ((body.expires_in ?? 3600) - 60) * 1000 };
   return auth;
 }
 
@@ -108,24 +144,25 @@ export function dateFromTitle(title?: string): string {
 export async function scheduleMarkdown(date: string, settings: GcalSettings, http: Http): Promise<string> {
   const auth = await authenticate(settings.credentialsPath, http);
   const headers: Record<string, string> = { Authorization: `Bearer ${auth.token}` };
-  const quotaProject = settings.quotaProject || auth.quotaProject;
+  const quotaProject = settings.quotaProject.trim() || auth.quotaProject;
   if (quotaProject) headers["x-goog-user-project"] = quotaProject;
+  const timeZone = settings.timeZone.trim() || DEFAULT_SETTINGS.timeZone;
   const next = addDays(date, 1);
-  const timeMin = `${date}T00:00:00${tzOffset(date, settings.timeZone)}`;
-  const timeMax = `${next}T00:00:00${tzOffset(next, settings.timeZone)}`;
+  const timeMin = `${date}T00:00:00${tzOffset(date, timeZone)}`;
+  const timeMax = `${next}T00:00:00${tzOffset(next, timeZone)}`;
 
   const seen = new Set<string>();
   const rows: Row[] = [];
   for (const cal of settings.calendars) {
-    for (const ev of await listEvents(http, headers, cal.id, timeMin, timeMax, settings.timeZone)) {
+    for (const ev of await listEvents(http, headers, cal.id, timeMin, timeMax, timeZone)) {
       if (ev.status === "cancelled") continue;
-      const start = ev.start.dateTime ?? ev.start.date;
+      const start = ev.start.dateTime ?? ev.start.date ?? "";
       const key = (ev.iCalUID ?? ev.id) + start; // same event on several calendars: first calendar wins
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const me = (ev.attendees ?? []).find((a: any) => a.self);
-      const rsvp = me ? RSVP[me.responseStatus] ?? "—" : "—";
+      const me = (ev.attendees ?? []).find((a) => a.self);
+      const rsvp = me ? RSVP[me.responseStatus ?? ""] ?? "—" : "—";
       let title = cal.marker + cell(ev.summary ?? "(no title)");
       if (rsvp === "❌") title = `~~${title}~~`;
       const allDay = Boolean(ev.start.date);
@@ -179,37 +216,38 @@ function renderList(rows: Row[]): string[] {
 }
 
 async function listEvents(http: Http, headers: Record<string, string>, calId: string, timeMin: string, timeMax: string, timeZone: string) {
-  const items: any[] = [];
+  const items: CalEvent[] = [];
   let pageToken: string | undefined;
   do {
     const params = new URLSearchParams({ timeMin, timeMax, timeZone, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
     if (pageToken) params.set("pageToken", pageToken);
     const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?${params}`;
     const res = await http({ url, headers });
+    const body = (res.json ?? {}) as EventsResponse;
     if (res.status !== 200) {
-      const msg = res.json?.error?.message ?? `HTTP ${res.status}`;
+      const msg = body.error?.message ?? `HTTP ${res.status}`;
       const hint = /scope/i.test(msg) ? ` Re-auth with: ${FIX_AUTH}` : "";
       throw new Error(`Calendar API error for ${calId} (${res.status}): ${msg}${hint}`);
     }
-    items.push(...(res.json.items ?? []));
-    pageToken = res.json.nextPageToken;
+    items.push(...(body.items ?? []));
+    pageToken = body.nextPageToken;
   } while (pageToken);
   return items;
 }
 
 // dateTime strings come back in the requested timeZone, so slicing them is safe.
-function allDayRange(ev: any): string {
-  const start = ev.start.date;
-  const end = addDays(ev.end.date, -1); // all-day end date is exclusive
+function allDayRange(ev: CalEvent): string {
+  const start = ev.start.date ?? "";
+  const end = addDays(ev.end.date ?? start, -1); // all-day end date is exclusive
   return start === end ? "" : `${shortDate(start)} – ${shortDate(end)}`;
 }
 
-function timeRange(ev: any, day: string): string {
-  const fmt = (dtStr: string) => (dtStr.slice(0, 10) === day ? dtStr.slice(11, 16) : `${shortDate(dtStr.slice(0, 10))} ${dtStr.slice(11, 16)}`);
+function timeRange(ev: CalEvent, day: string): string {
+  const fmt = (dtStr = "") => (dtStr.slice(0, 10) === day ? dtStr.slice(11, 16) : `${shortDate(dtStr.slice(0, 10))} ${dtStr.slice(11, 16)}`);
   return `${fmt(ev.start.dateTime)}–${fmt(ev.end.dateTime)}`;
 }
 
-function location(ev: any): string {
+function location(ev: CalEvent): string {
   const parts: string[] = [];
   // Room names carry a capacity "(6)" and "[Google Meet]" suffix; the Meet link is shown separately.
   const loc = (ev.location ?? "").replace(/\s*\(\d+\)/g, "").replace(/\s*\[Google Meet\]/gi, "");

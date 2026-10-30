@@ -1,6 +1,6 @@
 {
   "name": "gcal-daily",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "description": "Obsidian plugin: insert a day's Google Calendar schedule into notes",
   "main": "main.js",
@@ -10,9 +10,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "builtin-modules": "^3.3.0",
     "esbuild": "^0.20.0",
-    "obsidian": "^1.5.7",
+    "obsidian": "^1.14.4",
     "typescript": "^5.4.0"
   }
 }

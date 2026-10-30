@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 
 // `node esbuild.config.mjs`        -> main.js for Obsidian
 // `node esbuild.config.mjs smoke`  -> smoke.cjs, a terminal test of the calendar logic
@@ -12,6 +12,6 @@ await esbuild.build({
   format: "cjs",
   platform: "node",
   target: "es2020",
-  external: ["obsidian", "electron", ...builtins],
+  external: ["obsidian", "electron", ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
   logLevel: "info",
 });
