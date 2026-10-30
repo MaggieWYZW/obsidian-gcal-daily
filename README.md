@@ -1,5 +1,7 @@
 # GCal Daily
 
+☕ **Enjoying GCal Daily?** If it saves you a few minutes each morning, you can [buy me a coffee](https://buymeacoffee.com/magswang) 💛 It keeps me building and fixing things 🛠️✨
+
 Insert a day's Google Calendar schedule into a note. It's designed for daily notes: drop one line into your Templater daily-note template and each new note starts with that day's events.
 
 The schedule is fetched once, when you insert it. It doesn't sync, so the note won't change if your calendar changes later.
