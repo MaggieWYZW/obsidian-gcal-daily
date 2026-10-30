@@ -84,6 +84,7 @@ This plugin:
   - Google's sign-in endpoint (`https://oauth2.googleapis.com/token`), to swap your saved credentials for a short-lived access token.
   - The Google Calendar API (`https://www.googleapis.com/calendar/v3`), to read the events for the requested day from the calendars you list.
 - **Reads one file outside your vault:** the Application Default Credentials file that `gcloud auth application-default login` saves (see the Credentials file setting). It reads the refresh token and client ID from that file and sends them only to Google's sign-in endpoint, to get access tokens. The plugin never writes to the file, copies it, or sends it anywhere else.
+  - **Why Node's `fs` is used:** Obsidian's vault API can only reach files inside the vault, so the plugin uses Node's `fs` to read this one file. It makes a single read-only call (`readFile`), for the path in the Credentials file setting. It doesn't list, write or delete files, or read anything else.
 - **Requires a Google account and a Google Cloud project,** as described in Requirements.
 - **Is read-only.** It requests events only and never changes your calendars.
 - **Doesn't run commands or programs on your computer.**
