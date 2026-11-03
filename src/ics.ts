@@ -52,7 +52,7 @@ export async function feedEvents(http: Http, cal: CalendarSource, date: string, 
   if (res.status !== 200) throw new Error(`Feed ${name}: HTTP ${res.status}`);
 
   // Some servers send a BOM or leading blank lines; anything else (an HTML login page, say) isn't a feed.
-  const body = res.text.replace(/^﻿/, "").trimStart();
+  const body = res.text.replace(/^\uFEFF/, "").trimStart();
   if (!/^BEGIN:VCALENDAR/i.test(body)) throw new Error(`Feed ${name} didn't return an iCalendar file`);
 
   try {

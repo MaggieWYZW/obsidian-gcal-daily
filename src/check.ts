@@ -6,9 +6,6 @@ import { DEFAULT_SETTINGS, scheduleMarkdown } from "./calendar";
 import { feedEvents, isFeed, parseFeed } from "./ics";
 import { CalendarSource, Event, GcalSettings, Http, HttpRequest } from "./types";
 
-// parseFeed gains an optional `selfEmails` parameter; this alias keeps the file compiling against
-// either signature without `any`.
-const parse = parseFeed as (text: string, date: string, timeZone: string, selfEmails?: string[]) => Event[];
 
 const LONDON = "Europe/London";
 const NY = "America/New_York";
@@ -93,7 +90,7 @@ const cases: Case[] = [];
 const test = (name: string, run: () => void | Promise<void>) => cases.push({ name, run });
 const day = (fixtureName: string, text: string, date: string, tz: string, expected: Expected[], self?: string[]) =>
   test(`parseFeed ${fixtureName} ${date} ${tz}${self ? ` self=${self.join(",")}` : ""}`, () =>
-    events(self ? parse(text, date, tz, self) : parse(text, date, tz), expected),
+    events(self ? parseFeed(text, date, tz, self) : parseFeed(text, date, tz), expected),
   );
 
 // --- isFeed -----------------------------------------------------------------------------------
@@ -338,7 +335,7 @@ test("feedEvents reads the user's address from a Google feed URL when the calend
   const renamed = MISC.replace("X-WR-CALNAME:maggie@example.com", "X-WR-CALNAME:Personal");
   ok(renamed !== MISC, "fixture should contain X-WR-CALNAME:maggie@example.com");
   events(await feedEvents(fakeHttp(200, renamed), personal, "2026-11-03", LONDON), nov3London); // URL holds maggie%40example.com
-  const noAddress = parse(renamed, "2026-11-03", LONDON).filter((e) => e.rsvp);
+  const noAddress = parseFeed(renamed, "2026-11-03", LONDON).filter((e) => e.rsvp);
   sameLines(noAddress.map((e) => e.uid), [], "events with rsvp when neither name nor URL gives the address", false);
 });
 test("feedEvents refuses plain http:// without fetching, no URL in the error", async () => {
@@ -365,7 +362,7 @@ const GMAIL_ICS =
   vevent("other@google.com", "Someone else", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:sam@example.com\nTRANSP:TRANSPARENT\n") +
   "END:VCALENDAR\n";
 test("parseFeed flags only the Gmail-added shape", () => {
-  const flagged = parse(GMAIL_ICS, "2026-11-13", LONDON, ["maggie@example.com"]).filter((e) => e.fromGmail).map((e) => e.uid);
+  const flagged = parseFeed(GMAIL_ICS, "2026-11-13", LONDON, ["maggie@example.com"]).filter((e) => e.fromGmail).map((e) => e.uid);
   sameLines(flagged, ["train@google.com"], "events flagged fromGmail", false);
 });
 test("feedEvents keeps the flag for Google feeds, drops it for other hosts", async () => {
