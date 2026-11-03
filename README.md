@@ -71,7 +71,7 @@ These menus change from time to time, so treat the paths as rough directions.
 ### How feeds behave
 
 - **Recurring events** are expanded on your computer (using [ical.js](https://github.com/kewisch/ical.js)), including exceptions and moved occurrences.
-- **RSVP marks** come from the attendee entry whose address matches the calendar's own address. Google names a primary calendar's feed after its address, so this works for your main Google calendar. Events with no matching attendee (for example, events you created, or calendars whose feed isn't named after an address) show no mark.
+- **RSVP marks** come from the attendee entry whose address is yours. For Google feeds the address is read from the secret URL itself, so this works even if you've renamed the calendar. For other providers it's read from the calendar's name, so events show no mark if the calendar isn't named after your address. Events you created without inviting anyone never have a mark.
 - **Freshness:** the provider may cache the feed, so an edit made in the last few minutes may not show up yet. Re-run the command later if needed.
 - **Size:** a feed contains the calendar's full history and is downloaded each time you insert a schedule. Large calendars can take a moment.
 

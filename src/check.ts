@@ -334,6 +334,13 @@ test("feedEvents throwing http, unlabelled feed: names the host, no URL", async 
   noLeak(msg, unlabelled);
 });
 
+test("feedEvents reads the user's address from a Google feed URL when the calendar was renamed", async () => {
+  const renamed = MISC.replace("X-WR-CALNAME:maggie@example.com", "X-WR-CALNAME:Personal");
+  ok(renamed !== MISC, "fixture should contain X-WR-CALNAME:maggie@example.com");
+  events(await feedEvents(fakeHttp(200, renamed), personal, "2026-11-03", LONDON), nov3London); // URL holds maggie%40example.com
+  const noAddress = parse(renamed, "2026-11-03", LONDON).filter((e) => e.rsvp);
+  sameLines(noAddress.map((e) => e.uid), [], "events with rsvp when neither name nor URL gives the address", false);
+});
 test("feedEvents refuses plain http:// without fetching, no URL in the error", async () => {
   const seen: string[] = [];
   const cal: CalendarSource = { ...personal, id: googleFeed.replace(/^https:/, "http:") };

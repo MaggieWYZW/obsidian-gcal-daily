@@ -29,12 +29,13 @@ export function isFeed(id: string): boolean {
  */
 export async function feedEvents(http: Http, cal: CalendarSource, date: string, timeZone: string): Promise<Event[]> {
   const url = cal.id.trim().replace(/^webcal:\/\//i, "https://");
-  let host: string;
+  let parsed: URL;
   try {
-    host = new URL(url).host;
+    parsed = new URL(url);
   } catch {
     throw new Error(`${cal.label ? `Feed "${cal.label}" has` : "A calendar line has"} an invalid feed URL`);
   }
+  const host = parsed.host;
   const name = cal.label ? `"${cal.label}" (${host})` : host;
   // The URL is the credential, so never send it unencrypted.
   if (/^http:\/\//i.test(url)) throw new Error(`Feed ${name} uses http://; use its https:// or webcal:// address`);
@@ -55,10 +56,21 @@ export async function feedEvents(http: Http, cal: CalendarSource, date: string, 
   if (!/^BEGIN:VCALENDAR/i.test(body)) throw new Error(`Feed ${name} didn't return an iCalendar file`);
 
   try {
-    return parseFeed(body, date, timeZone);
+    return parseFeed(body, date, timeZone, googleCalendarAddress(parsed));
   } catch (err) {
     throw new Error(`Feed ${name} couldn't be parsed: ${redact(err instanceof Error ? err.message : String(err), url)}`);
   }
+}
+
+/**
+ * Google secret addresses carry the calendar's ID: /calendar/ical/<id>/private-…/basic.ics. For someone's own
+ * calendar the ID is their address, which finds their RSVP even when the calendar has been renamed
+ * (X-WR-CALNAME then holds the new name, not the address).
+ */
+function googleCalendarAddress(url: URL): string[] {
+  if (url.host !== "calendar.google.com") return [];
+  const id = safeDecode(url.pathname.match(/^\/calendar\/ical\/([^/]+)\//)?.[1] ?? "");
+  return /^[^@\s]+@[^@\s]+$/.test(id) && !id.endsWith(".calendar.google.com") ? [id] : [];
 }
 
 /**
