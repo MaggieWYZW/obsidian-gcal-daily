@@ -3,7 +3,7 @@ import { CalendarSource, DEFAULT_SETTINGS, GcalSettings, Http, dateFromTitle, de
 
 const obsidianHttp: Http = async ({ url, method, headers, body }) => {
   const res = await requestUrl({ url, method, headers, body, throw: false });
-  return { status: res.status, json: res.json as unknown };
+  return { status: res.status, text: res.text };
 };
 
 export default class GcalDailyPlugin extends Plugin {

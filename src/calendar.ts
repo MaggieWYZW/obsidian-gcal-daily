@@ -1,24 +1,11 @@
-// Calendar fetching + Markdown rendering. No Obsidian imports, so it can be
-// exercised from the terminal (see smoke.ts).
-import { readFile } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
+// Builds the day's schedule from the configured calendars and renders it as Markdown.
+// No Obsidian imports, so it can be exercised from the terminal (see smoke.ts).
+import { googleEvents, googleHeaders } from "./google";
+import { feedEvents, isFeed } from "./ics";
+import { Event, GcalSettings, Http } from "./types";
 
-export interface CalendarSource {
-  id: string;
-  marker: string; // prefix for event titles, e.g. "🏠 "
-  label?: string; // shown in the footer legend next to the marker, e.g. "personal"
-}
-
-export type ScheduleFormat = "list" | "table";
-
-export interface GcalSettings {
-  format: ScheduleFormat;
-  credentialsPath: string; // blank = gcloud's default location
-  quotaProject: string; // blank = the quota project saved in the credentials file
-  timeZone: string;
-  calendars: CalendarSource[];
-}
+export type { CalendarSource, GcalSettings, Http, HttpRequest, ScheduleFormat } from "./types";
+export { defaultCredentialsPath } from "./google";
 
 export const DEFAULT_SETTINGS: GcalSettings = {
   format: "list",
@@ -28,110 +15,8 @@ export const DEFAULT_SETTINGS: GcalSettings = {
   calendars: [{ id: "primary", marker: "" }],
 };
 
-// Minimal HTTP shape so Obsidian's requestUrl and Node's https (smoke test) can both be plugged in.
-export interface HttpRequest {
-  url: string;
-  method?: "GET" | "POST";
-  headers?: Record<string, string>;
-  body?: string;
-}
-export type Http = (req: HttpRequest) => Promise<{ status: number; json: unknown }>;
-
-// The fields read from gcloud's credentials file and Google's responses.
-interface Credentials {
-  type?: string;
-  client_id?: string;
-  client_secret?: string;
-  refresh_token?: string;
-  quota_project_id?: string;
-}
-interface TokenResponse {
-  access_token?: string;
-  expires_in?: number;
-  error?: string;
-  error_description?: string;
-}
-interface EventTime {
-  date?: string; // all-day events
-  dateTime?: string; // timed events
-}
-interface CalEvent {
-  id: string;
-  iCalUID?: string;
-  status?: string;
-  summary?: string;
-  location?: string;
-  hangoutLink?: string;
-  start: EventTime;
-  end: EventTime;
-  attendees?: { self?: boolean; responseStatus?: string }[];
-}
-interface EventsResponse {
-  items?: CalEvent[];
-  nextPageToken?: string;
-  error?: { message?: string };
-}
-
 const RSVP: Record<string, string> = { accepted: "✅", tentative: "❓", needsAction: "⚠️", declined: "❌" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const FIX_AUTH =
-  "gcloud auth application-default login --scopes=https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/cloud-platform";
-
-/** Where `gcloud auth application-default login` saves its credentials. */
-export function defaultCredentialsPath(): string {
-  const configDir =
-    process.env.CLOUDSDK_CONFIG ??
-    (process.platform === "win32" ? join(process.env.APPDATA ?? homedir(), "gcloud") : join(homedir(), ".config", "gcloud"));
-  return join(configDir, "application_default_credentials.json");
-}
-
-interface Auth {
-  token: string;
-  quotaProject: string;
-}
-
-// Access tokens last about an hour; keep one in memory rather than refreshing on every fetch.
-let cached: { file: string; expires: number; auth: Auth } | undefined;
-
-/**
- * Trade the refresh token in gcloud's Application Default Credentials for a short-lived
- * access token. The credentials are only read from disk and sent to Google's token endpoint.
- */
-export async function authenticate(credentialsPath: string, http: Http): Promise<Auth> {
-  const file = credentialsPath.trim() || defaultCredentialsPath();
-  if (cached && cached.file === file && Date.now() < cached.expires) return cached.auth;
-
-  let creds: Credentials;
-  try {
-    creds = JSON.parse(await readFile(file, "utf8")) as Credentials;
-  } catch {
-    throw new Error(`Couldn't read credentials at ${file}. Sign in with: ${FIX_AUTH}`);
-  }
-  if (creds.type !== "authorized_user" || !creds.refresh_token) {
-    throw new Error(`${file} isn't user credentials from gcloud. Sign in with: ${FIX_AUTH}`);
-  }
-
-  const res = await http({
-    url: "https://oauth2.googleapis.com/token",
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: creds.client_id ?? "",
-      client_secret: creds.client_secret ?? "",
-      refresh_token: creds.refresh_token,
-    }).toString(),
-  });
-  const body = (res.json ?? {}) as TokenResponse;
-  if (res.status !== 200 || !body.access_token) {
-    const msg = body.error_description ?? body.error ?? `HTTP ${res.status}`;
-    throw new Error(`Google sign-in failed: ${msg}. Re-auth with: ${FIX_AUTH}`);
-  }
-
-  const auth = { token: body.access_token, quotaProject: creds.quota_project_id ?? "" };
-  cached = { file, auth, expires: Date.now() + ((body.expires_in ?? 3600) - 60) * 1000 };
-  return auth;
-}
 
 /** Pull a YYYY-MM-DD out of a note title like "2026-10-30, Friday"; default today (local). */
 export function dateFromTitle(title?: string): string {
@@ -142,35 +27,34 @@ export function dateFromTitle(title?: string): string {
 }
 
 export async function scheduleMarkdown(date: string, settings: GcalSettings, http: Http): Promise<string> {
-  const auth = await authenticate(settings.credentialsPath, http);
-  const headers: Record<string, string> = { Authorization: `Bearer ${auth.token}` };
-  const quotaProject = settings.quotaProject.trim() || auth.quotaProject;
-  if (quotaProject) headers["x-goog-user-project"] = quotaProject;
   const timeZone = settings.timeZone.trim() || DEFAULT_SETTINGS.timeZone;
   const next = addDays(date, 1);
   const timeMin = `${date}T00:00:00${tzOffset(date, timeZone)}`;
   const timeMax = `${next}T00:00:00${tzOffset(next, timeZone)}`;
+  // Sign in to Google only if a Google calendar ID is configured; feed-only setups need no credentials.
+  let headers: Promise<Record<string, string>> | undefined;
+  const google = () => (headers = headers ?? googleHeaders(settings, http));
 
   const seen = new Set<string>();
   const rows: Row[] = [];
   for (const cal of settings.calendars) {
-    for (const ev of await listEvents(http, headers, cal.id, timeMin, timeMax, timeZone)) {
-      if (ev.status === "cancelled") continue;
-      const start = ev.start.dateTime ?? ev.start.date ?? "";
-      const key = (ev.iCalUID ?? ev.id) + start; // same event on several calendars: first calendar wins
+    const events = isFeed(cal.id)
+      ? await feedEvents(http, cal, date, timeZone)
+      : await googleEvents(http, await google(), cal.id, timeMin, timeMax, timeZone);
+    for (const ev of events) {
+      if (ev.cancelled) continue;
+      const key = ev.uid + ev.start; // same event on several calendars: first calendar wins
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const me = (ev.attendees ?? []).find((a) => a.self);
-      const rsvp = me ? RSVP[me.responseStatus ?? ""] ?? "—" : "—";
+      const rsvp = RSVP[ev.rsvp ?? ""] ?? "—";
       let title = cal.marker + cell(ev.summary ?? "(no title)");
       if (rsvp === "❌") title = `~~${title}~~`;
-      const allDay = Boolean(ev.start.date);
       rows.push({
-        sort: (allDay ? "0" : "1") + start,
-        allDay,
-        time: allDay ? "" : timeRange(ev, date),
-        range: allDay ? allDayRange(ev) : "",
+        sort: (ev.allDay ? "0" : "1") + ev.start,
+        allDay: ev.allDay,
+        time: ev.allDay ? "" : timeRange(ev, date),
+        range: ev.allDay ? allDayRange(ev) : "",
         title,
         rsvp,
         loc: location(ev),
@@ -215,44 +99,24 @@ function renderList(rows: Row[]): string[] {
   return lines;
 }
 
-async function listEvents(http: Http, headers: Record<string, string>, calId: string, timeMin: string, timeMax: string, timeZone: string) {
-  const items: CalEvent[] = [];
-  let pageToken: string | undefined;
-  do {
-    const params = new URLSearchParams({ timeMin, timeMax, timeZone, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
-    if (pageToken) params.set("pageToken", pageToken);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?${params}`;
-    const res = await http({ url, headers });
-    const body = (res.json ?? {}) as EventsResponse;
-    if (res.status !== 200) {
-      const msg = body.error?.message ?? `HTTP ${res.status}`;
-      const hint = /scope/i.test(msg) ? ` Re-auth with: ${FIX_AUTH}` : "";
-      throw new Error(`Calendar API error for ${calId} (${res.status}): ${msg}${hint}`);
-    }
-    items.push(...(body.items ?? []));
-    pageToken = body.nextPageToken;
-  } while (pageToken);
-  return items;
-}
-
-// dateTime strings come back in the requested timeZone, so slicing them is safe.
-function allDayRange(ev: CalEvent): string {
-  const start = ev.start.date ?? "";
-  const end = addDays(ev.end.date ?? start, -1); // all-day end date is exclusive
+// Event times are already local to the schedule's time zone, so slicing them is safe.
+function allDayRange(ev: Event): string {
+  const start = ev.start;
+  const end = addDays(ev.end || start, -1); // all-day end date is exclusive
   return start === end ? "" : `${shortDate(start)} – ${shortDate(end)}`;
 }
 
-function timeRange(ev: CalEvent, day: string): string {
+function timeRange(ev: Event, day: string): string {
   const fmt = (dtStr = "") => (dtStr.slice(0, 10) === day ? dtStr.slice(11, 16) : `${shortDate(dtStr.slice(0, 10))} ${dtStr.slice(11, 16)}`);
-  return `${fmt(ev.start.dateTime)}–${fmt(ev.end.dateTime)}`;
+  return `${fmt(ev.start)}–${fmt(ev.end)}`;
 }
 
-function location(ev: CalEvent): string {
+function location(ev: Event): string {
   const parts: string[] = [];
   // Room names carry a capacity "(6)" and "[Google Meet]" suffix; the Meet link is shown separately.
   const loc = (ev.location ?? "").replace(/\s*\(\d+\)/g, "").replace(/\s*\[Google Meet\]/gi, "");
   if (loc.trim()) parts.push(cell(loc));
-  if (/^https:\/\/meet\.google\.com\/[\w-]+$/.test(ev.hangoutLink ?? "")) parts.push(`[Meet](${ev.hangoutLink})`);
+  if (/^https:\/\/meet\.google\.com\/[\w-]+$/.test(ev.meetLink ?? "")) parts.push(`[Meet](${ev.meetLink})`);
   return parts.join(" · ");
 }
 

@@ -10,15 +10,7 @@ const nodeHttp: Http = ({ url, method = "GET", headers, body }) =>
       let data = "";
       res.setEncoding("utf8");
       res.on("data", (chunk: string) => (data += chunk));
-      res.on("end", () => {
-        let json: unknown = null;
-        try {
-          json = JSON.parse(data) as unknown;
-        } catch {
-          // Not JSON (e.g. an HTML error page); callers fall back to the status code.
-        }
-        resolve({ status: res.statusCode ?? 0, json });
-      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, text: data }));
     });
     req.on("error", reject);
     req.end(body);
