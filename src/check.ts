@@ -2,7 +2,7 @@
 // Expected values are written by hand from the fixtures in test/fixtures/ (see the comments next to
 // each case for how the trickier times were worked out); they are not derived from src/ics.ts.
 import { readFileSync } from "fs";
-import { scheduleMarkdown } from "./calendar";
+import { DEFAULT_SETTINGS, scheduleMarkdown } from "./calendar";
 import { feedEvents, isFeed, parseFeed } from "./ics";
 import { CalendarSource, Event, GcalSettings, Http, HttpRequest } from "./types";
 
@@ -350,6 +350,39 @@ test("feedEvents refuses plain http:// without fetching, no URL in the error", a
   sameLines(seen, [], "requested URLs", false);
 });
 
+// --- Events Gmail added from emails ------------------------------------------------------------
+// Shape seen in a real Google feed: no ORGANIZER, the user as the only ATTENDEE, TRANSP:TRANSPARENT.
+const vevent = (uid: string, summary: string, extra: string) =>
+  `BEGIN:VEVENT\nUID:${uid}\nDTSTART:20261113T145500Z\nDTEND:20261113T173600Z\nSUMMARY:${summary}\n${extra}END:VEVENT\n`;
+const ME = "ATTENDEE;PARTSTAT=ACCEPTED:mailto:maggie@example.com\n";
+const GMAIL_ICS =
+  "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Google Inc//Google Calendar 70.9054//EN\nX-WR-CALNAME:Personal\n" +
+  vevent("train@google.com", "Train to Great Yarmouth", `${ME}TRANSP:TRANSPARENT\n`) +
+  vevent("own@google.com", "Packing", "TRANSP:OPAQUE\n") +
+  vevent("invite@google.com", "Invite", `ORGANIZER:mailto:sam@example.com\n${ME}TRANSP:TRANSPARENT\n`) +
+  vevent("opaque@google.com", "Busy with only me", `${ME}TRANSP:OPAQUE\n`) +
+  vevent("two@google.com", "Two guests", `${ME}ATTENDEE;PARTSTAT=ACCEPTED:mailto:sam@example.com\nTRANSP:TRANSPARENT\n`) +
+  vevent("other@google.com", "Someone else", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:sam@example.com\nTRANSP:TRANSPARENT\n") +
+  "END:VCALENDAR\n";
+test("parseFeed flags only the Gmail-added shape", () => {
+  const flagged = parse(GMAIL_ICS, "2026-11-13", LONDON, ["maggie@example.com"]).filter((e) => e.fromGmail).map((e) => e.uid);
+  sameLines(flagged, ["train@google.com"], "events flagged fromGmail", false);
+});
+test("feedEvents keeps the flag for Google feeds, drops it for other hosts", async () => {
+  const google = await feedEvents(fakeHttp(200, GMAIL_ICS), personal, "2026-11-13", LONDON); // address from the URL
+  sameLines(google.filter((e) => e.fromGmail).map((e) => e.uid), ["train@google.com"], "Google feed flagged", false);
+  const other = await feedEvents(fakeHttp(200, GMAIL_ICS.replace("X-WR-CALNAME:Personal", "X-WR-CALNAME:maggie@example.com")), unlabelled, "2026-11-13", LONDON);
+  sameLines(other.filter((e) => e.fromGmail).map((e) => e.uid), [], "non-Google feed flagged", false);
+});
+test("scheduleMarkdown hides Gmail-added events by default and shows them when the setting is on", async () => {
+  const settings: GcalSettings = { ...DEFAULT_SETTINGS, timeZone: LONDON, calendars: [{ id: googleFeed, marker: "" }] };
+  const http = fakeHttp(200, GMAIL_ICS);
+  const hidden = await scheduleMarkdown("2026-11-13", settings, http);
+  ok(!hidden.includes("Train to Great Yarmouth") && hidden.includes("Packing"), `default should hide the Gmail event:\n${hidden}`);
+  const shown = await scheduleMarkdown("2026-11-13", { ...settings, includeGmailEvents: true }, http);
+  ok(shown.includes("Train to Great Yarmouth ✅"), `setting on should show it with its RSVP:\n${shown}`);
+});
+
 // --- scheduleMarkdown with feed-only settings --------------------------------------------------
 const workFeed = `webcal://calendar.google.com/calendar/ical/maggie.wang%40work.example/${SECRET}/basic.ics`;
 const feedOnly: GcalSettings = {
@@ -357,6 +390,7 @@ const feedOnly: GcalSettings = {
   credentialsPath: "/nonexistent/credentials.json", // must never be read
   quotaProject: "",
   timeZone: LONDON,
+  includeGmailEvents: false,
   calendars: [
     { id: googleFeed, marker: "🏠 ", label: "personal" },
     { id: workFeed, marker: "💼 ", label: "work" },

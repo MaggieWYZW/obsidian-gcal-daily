@@ -81,6 +81,11 @@ class GcalSettingTab extends PluginSettingTab {
         control: { type: "text", key: "quotaProject" },
       },
       {
+        name: "Show events Gmail added from emails",
+        desc: "Google feeds only. Gmail adds events such as train tickets and bookings from your emails. The Google Calendar API leaves them out, so they're hidden by default to match; turn this on to include them. They're recognised by their shape (only you as a guest, no organiser, shown as free), so an unusual event could be misjudged.",
+        control: { type: "toggle", key: "includeGmailEvents" },
+      },
+      {
         name: "Time zone",
         desc: "IANA name, e.g. Europe/London.",
         control: { type: "text", key: "timeZone", placeholder: DEFAULT_SETTINGS.timeZone, validate: validateTimeZone },

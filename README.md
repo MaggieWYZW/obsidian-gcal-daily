@@ -72,6 +72,7 @@ These menus change from time to time, so treat the paths as rough directions.
 
 - **Recurring events** are expanded on your computer (using [ical.js](https://github.com/kewisch/ical.js)), including exceptions and moved occurrences.
 - **RSVP marks** come from the attendee entry whose address is yours. For Google feeds the address is read from the secret URL itself, so this works even if you've renamed the calendar. For other providers it's read from the calendar's name, so events show no mark if the calendar isn't named after your address. Events you created without inviting anyone never have a mark.
+- **Events Gmail added from emails** (train tickets, bookings) are in Google feeds but not in the Google Calendar API, and often duplicate an event you made yourself. They're hidden by default; turn on **Show events Gmail added from emails** to include them. The feed doesn't label them, so the plugin recognises them by their shape: only you as a guest, no organiser, and shown as free.
 - **Freshness:** the provider may cache the feed, so an edit made in the last few minutes may not show up yet. Re-run the command later if needed.
 - **Size:** a feed contains the calendar's full history and is downloaded each time you insert a schedule. Large calendars can take a moment.
 
@@ -96,6 +97,7 @@ If a fetch fails, the plugin inserts a warning callout instead of the schedule. 
 | Format | Bullet list or table. | Bullet list |
 | Credentials file | Google calendar IDs only. The file saved by `gcloud auth application-default login`. | gcloud's default location: `~/.config/gcloud/application_default_credentials.json`, or `%APPDATA%\gcloud\…` on Windows |
 | Quota project | Google calendar IDs only. The Google Cloud project with the Calendar API enabled. | The quota project saved with your credentials |
+| Show events Gmail added from emails | Google feeds only. Includes events Gmail creates from emails, such as train tickets and bookings. Off by default to match the Google Calendar API, which leaves them out. | Off |
 | Time zone | An IANA time zone name, e.g. `Europe/London`. Sets which hours count as "the day". | Your system time zone |
 | Calendars | One calendar per line, as `calendar, marker, label`. The first field is a feed URL or a Google calendar ID. The marker and label are optional. | `primary` |
 

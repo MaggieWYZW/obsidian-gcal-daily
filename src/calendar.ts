@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: GcalSettings = {
   credentialsPath: "",
   quotaProject: "",
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  includeGmailEvents: false,
   calendars: [{ id: "primary", marker: "" }],
 };
 
@@ -43,6 +44,7 @@ export async function scheduleMarkdown(date: string, settings: GcalSettings, htt
       : await googleEvents(http, await google(), cal.id, timeMin, timeMax, timeZone);
     for (const ev of events) {
       if (ev.cancelled) continue;
+      if (ev.fromGmail && !settings.includeGmailEvents) continue; // the API leaves these out too
       const key = ev.uid + ev.start; // same event on several calendars: first calendar wins
       if (seen.has(key)) continue;
       seen.add(key);

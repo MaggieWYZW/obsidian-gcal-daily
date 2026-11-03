@@ -13,6 +13,7 @@ export interface GcalSettings {
   credentialsPath: string; // blank = gcloud's default location (Google calendar IDs only)
   quotaProject: string; // blank = the quota project saved in the credentials file (Google calendar IDs only)
   timeZone: string;
+  includeGmailEvents: boolean; // Google feeds only: keep events Gmail added from emails (the API leaves them out)
   calendars: CalendarSource[];
 }
 
@@ -39,4 +40,5 @@ export interface Event {
   meetLink?: string;
   rsvp?: string; // the user's response: accepted | tentative | needsAction | declined; absent when there's no invite
   cancelled: boolean;
+  fromGmail?: boolean; // looks like an event Gmail added from an email (Google feeds only)
 }

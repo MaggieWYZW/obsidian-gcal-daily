@@ -56,7 +56,9 @@ export async function feedEvents(http: Http, cal: CalendarSource, date: string, 
   if (!/^BEGIN:VCALENDAR/i.test(body)) throw new Error(`Feed ${name} didn't return an iCalendar file`);
 
   try {
-    return parseFeed(body, date, timeZone, googleCalendarAddress(parsed));
+    const events = parseFeed(body, date, timeZone, googleCalendarAddress(parsed));
+    // The Gmail pattern is Google's; don't let it hide events from other providers' feeds.
+    return host === "calendar.google.com" ? events : events.map((ev) => ({ ...ev, fromGmail: false }));
   } catch (err) {
     throw new Error(`Feed ${name} couldn't be parsed: ${redact(err instanceof Error ? err.message : String(err), url)}`);
   }
@@ -272,7 +274,21 @@ function emit(uid: string, start: Time, end: Time, startZone: string, endZone: s
       : description?.match(/https:\/\/meet\.google\.com\/[a-z0-9-]+/)?.[0],
     rsvp: rsvp(first(comps, (c) => (c.hasProperty("attendee") ? c.getAllProperties("attendee") : undefined)) ?? [], ctx.me),
     cancelled: first(comps, (c) => text(c, "status"))?.toUpperCase() === "CANCELLED",
+    fromGmail: fromGmail(comps[0], ctx.me),
   });
+}
+
+/**
+ * Events Gmail adds from emails (train tickets, bookings) are left out by the Calendar API but kept in feeds,
+ * with no explicit marker. They look alike: no ORGANIZER, the user as the only ATTENDEE, and shown as free.
+ * A real invite always has an organizer, and a plain event of your own has no attendees.
+ */
+function fromGmail(comp: Component, me: Set<string>): boolean {
+  if (comp.hasProperty("organizer") || text(comp, "transp")?.toUpperCase() !== "TRANSPARENT") return false;
+  const attendees = comp.getAllProperties("attendee");
+  if (attendees.length !== 1) return false;
+  const value = attendees[0].getFirstValue();
+  return typeof value === "string" && me.has(value.replace(/^mailto:/i, "").trim().toLowerCase());
 }
 
 // The user's PARTSTAT, from the first ATTENDEE whose address is theirs.
