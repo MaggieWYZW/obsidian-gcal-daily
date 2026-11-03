@@ -56,7 +56,13 @@ That's it. With only feed URLs, the Credentials file and Quota project settings 
 
 These menus change from time to time, so treat the paths as rough directions.
 
-- **Google Calendar:** on the web, open **Settings**, pick the calendar under **Settings for my calendars**, then go to **Integrate calendar** and copy **Secret address in iCal format**. Don't use the *public* address: it only works if the calendar is made public.
+- **Google Calendar:** on the web, open **Settings** (⚙️), pick the calendar under **Settings for my calendars** on the left, scroll to **Integrate calendar**, and copy **Secret address in iCal format**. It's below the public address and may be hidden until you click it. The right link looks like this:
+  ```
+  https://calendar.google.com/calendar/ical/you%40gmail.com/private-<long code>/basic.ics
+  ```
+  Two look-alike links on the same page won't work:
+  - **Public address in iCal format** (`…/public/basic.ics`) returns *HTTP 404* unless the calendar is public.
+  - **Public URL to this calendar / embed code** (`…/calendar/embed?src=…`) is a web page, not a feed, and returns *HTTP 401*.
 - **Outlook / Microsoft 365:** in Outlook on the web, roughly **Settings → Calendar → Shared calendars → Publish a calendar**. Choose the calendar and a level of detail, publish, then copy the **ICS** link.
 - **iCloud:** in the Calendar app, share the calendar and turn on **Public Calendar** to get a `webcal://` link. Note that this makes the calendar public to anyone with the link.
 
