@@ -2,6 +2,7 @@
 node_modules/
 main.js
 smoke.cjs
+check.cjs
 
 # Personal plugin settings: calendar IDs, quota project. Never commit.
 data.json

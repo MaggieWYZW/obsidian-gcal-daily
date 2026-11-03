@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs",
-    "smoke": "node esbuild.config.mjs smoke && node smoke.cjs"
+    "smoke": "node esbuild.config.mjs smoke && node smoke.cjs",
+    "check": "node esbuild.config.mjs check && node check.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

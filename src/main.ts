@@ -72,12 +72,12 @@ class GcalSettingTab extends PluginSettingTab {
       },
       {
         name: "Credentials file",
-        desc: "Saved by `gcloud auth application-default login`. Leave blank for the default location.",
+        desc: "Only used for Google calendar IDs, not feed URLs. Saved by `gcloud auth application-default login`. Leave blank for the default location.",
         control: { type: "text", key: "credentialsPath", placeholder: defaultCredentialsPath() },
       },
       {
         name: "Quota project",
-        desc: "GCP project with the Calendar API enabled; calls count against its quota. Leave blank to use the one saved with your credentials.",
+        desc: "Only used for Google calendar IDs, not feed URLs. GCP project with the Calendar API enabled; calls count against its quota. Leave blank to use the one saved with your credentials.",
         control: { type: "text", key: "quotaProject" },
       },
       {
@@ -87,7 +87,7 @@ class GcalSettingTab extends PluginSettingTab {
       },
       {
         name: "Calendars",
-        desc: "One per line: calendar id, then optional title marker and legend label, comma-separated (e.g. `me@gmail.com, 🏠, personal`). Use `primary` for your main calendar. Earlier lines win when an event is on several calendars.",
+        desc: "One per line: an iCal feed URL (`https://…` or `webcal://…`) or a Google calendar ID, then optional title marker and legend label, comma-separated (e.g. `https://…/basic.ics, 🏠, personal`). Feed URLs need no credentials; keep them private. Google calendar IDs (e.g. `primary`) need the credentials above. Earlier lines win when an event is on several calendars.",
         // Rendered by hand: the textarea text is parsed into the calendars list, so it can't bind to a key directly.
         render: (setting) => {
           setting.addTextArea((t) => {
